@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use log::{debug};
+
 use serde::Deserialize;
+
 use crate::actor::{CompoundActorReference, is_public_searchable_by};
 use crate::attachment::AttachmentReference;
 use crate::context::Context;
@@ -200,11 +201,7 @@ impl Content {
         None
     }
 
-    /// Returns discoverability state of content.
-    /// Unlike method for actor this one defaults to denied discoverability.
-    /// This method is invoked if actor level discoverability is not allowed
-    /// to check explicit opt-in on content level.
-    pub fn get_discoverable_state(&self) -> Discoverable {
+    pub fn get_discoverable_state(&self, default_state: Discoverable) -> Discoverable {
 
         // `searchableBy` takes priority over other fields (which are usually account level fields)
         // See more on `searchableBy`:
@@ -233,10 +230,26 @@ impl Content {
             };
         }
 
-        debug!("Content {} is not opted in for indexing", self.object_id_str());
-
         // otherwise assume default indexing option
-        Discoverable::Denied(DenyReason::Default)
+        default_state
+    }
+
+    /// Returns discoverability state of content when checking opt-in state.
+    ///
+    /// This method is invoked when actor explicitly denies indexing.
+    /// However, in case service supports opt-in per content item, this
+    /// method validates actual discoverability state.
+    pub fn get_optin_discoverable_state(&self) -> Discoverable {
+        self.get_discoverable_state(Discoverable::Denied(DenyReason::Default))
+    }
+
+    /// Returns discoverability state of content when checking opt-out state.
+    ///
+    /// This method is invoked when actor explicitly allows indexing.
+    /// However, in case service supports opt-out per content item, this
+    /// method validates actual discoverability state.
+    pub fn get_optout_discoverable_state(&self) -> Discoverable {
+        self.get_discoverable_state(Discoverable::Allowed(AllowReason::Assumed))
     }
 }
 
@@ -244,6 +257,7 @@ impl Content {
 #[cfg(test)]
 mod tests {
     use language_utils::content_cleaner::clean_some_content;
+
     use crate::content::Content;
 
     #[test]

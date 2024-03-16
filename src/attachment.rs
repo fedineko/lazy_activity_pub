@@ -1,5 +1,7 @@
 use std::fmt::{Debug, Formatter};
+
 use serde::{Deserialize, Serialize};
+
 use crate::entity::EntityType;
 
 /// This structure represents ActivityPub Attachment.

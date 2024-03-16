@@ -265,14 +265,14 @@ impl Actor {
         // Some older instances have 'discoverable' flag only.
         // Historically it was for accounts only and for a slightly different purpose,
         // but is used for posts as well nowadays.
-        if context.has_definition("discoverable") {
-            if let Some(discoverable) = self.discoverable {
-                return match discoverable {
-                    true => Discoverable::Allowed(AllowReason::Discoverable),
-                    false => Discoverable::Denied(DenyReason::Discoverable),
-                };
-            }
+        if let Some(discoverable) = self.discoverable {
+            return match discoverable {
+                true => Discoverable::Allowed(AllowReason::Discoverable),
+                false => Discoverable::Denied(DenyReason::Discoverable),
+            };
+        }
 
+        if context.has_definition("discoverable") {
             // There is no clear spec for the case when it is not set but declared,
             // see Mastodon documentation:
             //  - <https://docs.joinmastodon.org/spec/activitypub/#discoverable>
