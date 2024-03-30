@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use log::warn;
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use crate::attachment::AttachmentReference;
 use crate::context::Context;
@@ -24,8 +24,6 @@ pub struct Actor {
     pub inbox: url::Url,
 
     /// URL of this actor's outbox.
-    /// No use so far, so commented out.
-    #[cfg(feature = "more_properties")]
     pub outbox: Option<url::Url>,
 
     /// Link to followers collection.
@@ -127,8 +125,8 @@ impl Actor {
     }
 
     /// This function checks if Actor object has security context and public key
-    /// related property. Returns reference to self, wrapped into Optional.
-    /// It is empty Optional if validation did fail.
+    /// related property. Returns reference to self, wrapped into [Option].
+    /// It is empty [Option] if validation did fail.
     pub fn validate_security_context(&self) -> Option<&Self> {
         let context = self.context();
 
@@ -454,6 +452,36 @@ impl PublicKeyReference {
         match self {
             PublicKeyReference::Single(public_key) => vec![public_key],
             PublicKeyReference::List(public_keys) => public_keys.iter().collect()
+        }
+    }
+
+    /// This method return key matching `key_id` if reference contains it.
+    pub fn get_by_id(&self, key_id: &str) -> Option<&PublicKey> {
+        let key_url = match url::Url::parse(key_id) {
+            Ok(url) => url,
+            Err(err) => {
+                error!("Given key ID '{key_id}' is not valid URl: {err:?}");
+                return None;
+            }
+        };
+
+        match self {
+            PublicKeyReference::Single(public_key) => if public_key.id.eq(&key_url) {
+                Some(public_key)
+            } else {
+                None
+            },
+            PublicKeyReference::List(public_keys) => public_keys.iter()
+                .find(|key| key.id.eq(&key_url))
+        }
+    }
+
+    /// This method return [PublicKey] if any is stored.
+    pub fn get_any(&self) -> Option<&PublicKey> {
+        match self {
+            PublicKeyReference::Single(public_key) => Some(public_key),
+            PublicKeyReference::List(public_keys) => public_keys.iter()
+                .next()
         }
     }
 }

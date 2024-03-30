@@ -60,7 +60,7 @@ pub enum ImageReference {
 
 impl ImageReference {
     /// Consumes self and returns vector of [Image] objects.
-    pub fn to_vec(self) -> Vec<Image> {
+    pub fn into_vec(self) -> Vec<Image> {
         match self {
             Self::Single(icon) => vec![icon],
             Self::List(icons) => icons,
@@ -73,7 +73,7 @@ impl ImageReference {
     /// image or jany image if it is not possible to infer the largest,
     /// or `None` if there is no any image definitions in this reference.
     pub fn get_largest_image(self) -> Option<Image> {
-        let mut images = self.to_vec();
+        let mut images = self.into_vec();
 
         images.sort_by(|b, a| {
             if a.width.is_some() && b.width.is_some() {

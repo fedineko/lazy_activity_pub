@@ -29,6 +29,9 @@ pub enum UrlReference {
 
     /// Property value contains multiple URLs.
     UrlList(Vec<url::Url>),
+
+    /// Invalid URL, e.g. ""
+    Invalid(String),
 }
 
 impl UrlReference {
@@ -39,6 +42,7 @@ impl UrlReference {
             UrlReference::Link(link) => vec![&link.href],
             UrlReference::LinkList(links) => links.iter().map(|x| &x.href).collect(),
             UrlReference::UrlList(urls) => urls.iter().collect(),
+            UrlReference::Invalid(_) => vec![],
         }
     }
 
@@ -111,7 +115,7 @@ pub struct Object {
 
     /// Object summary, short description.
     #[cfg(feature = "more_properties")]
-    summary: Option<String>
+    summary: Option<String>,
 }
 
 impl Object {

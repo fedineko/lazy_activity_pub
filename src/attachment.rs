@@ -68,7 +68,7 @@ impl AttachmentReference {
     }
 
     /// Consumes self and returns vector of attachments.
-    pub fn to_vec(self) -> Vec<Attachment> {
+    pub fn into_vec(self) -> Vec<Attachment> {
         match self {
             AttachmentReference::Single(attachment) => vec![attachment],
             AttachmentReference::List(attachments) => attachments,

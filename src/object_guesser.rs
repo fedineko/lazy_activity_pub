@@ -22,6 +22,7 @@ static ACTOR_REGEXES: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         build_regex(r"^/(users|u)/(?P<user>[^/]+)$"),
         build_regex(r"^/profile/(?P<user>[^/]+)$"),
+        build_regex(r"^/ap/users/(?P<user>\d+)$"),
     ]
 });
 
@@ -33,6 +34,7 @@ static CONTENT_REGEXES: Lazy<Vec<Regex>> = Lazy::new(|| {
         build_regex(r"^/p/([^/]+)/\d+$"),               // Pixelfed-like
         build_regex(r"^/post/\d+$"),                    // Lemmy-like
         build_regex(r"^/(notice|objects)/[^/]+$"),      // Soapbox-like
+        build_regex(r"^/ap/users/\d+/post/\d+/?$"),     // threads.net scheme
     ]
 });
 

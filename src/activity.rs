@@ -57,7 +57,7 @@ impl Activity {
 
     /// Returns ID of payload object.
     /// If payload value does not have `id` property and is not string
-    /// then returns empty Optional.
+    /// then returns empty Option.
     pub fn inner_object_id(&self) -> Option<url::Url> {
         return if self.object.is_object() {
             self.object.get("id")
