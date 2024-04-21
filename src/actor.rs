@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::sync::OnceLock;
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
@@ -293,11 +294,20 @@ impl Actor {
 
         Discoverable::Allowed(AllowReason::Assumed)
     }
+
+    /// Returns true if actor ID or addressee matches `pattern`.
+    pub fn matches(&self, pattern: &str) -> bool {
+        if self.object_entity.id.as_str().contains(pattern) {
+            return true;
+        }
+
+        self.object_entity.matches(pattern)
+    }
 }
 
 /// Helper enumeration to wrap different ways to refer actor into
 /// one serializable entity.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(untagged)]
 pub enum ActorReference {
     /// Actor as defined in this module.
@@ -306,6 +316,16 @@ pub enum ActorReference {
     BasicData(Box<Object>),
     /// The simplest option - just a URL to Actor.
     Url(url::Url),
+}
+
+impl Debug for ActorReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActorReference::Actor(actor) => f.write_fmt(format_args!("{actor:?})")),
+            ActorReference::BasicData(data) => f.write_fmt(format_args!("{data:?})")),
+            ActorReference::Url(url) => f.write_fmt(format_args!("{}", url.as_str()))
+        }
+    }
 }
 
 impl ActorReference {
@@ -325,6 +345,15 @@ impl ActorReference {
             Self::Actor(actor) => Some(actor.entity_type()),
             Self::Url(_) => None,
             Self::BasicData(object) => Some(object.entity_type()),
+        }
+    }
+
+    /// Returns true if any actor reference matches `pattern` string.
+    pub fn matches(&self, pattern: &str) -> bool {
+        match self {
+            ActorReference::Actor(actor) => actor.matches(pattern),
+            ActorReference::BasicData(object) => object.matches(pattern),
+            ActorReference::Url(url) => url.as_str().contains(pattern)
         }
     }
 }
@@ -381,9 +410,20 @@ impl CompoundActorReference {
     pub fn as_id_vec(&self) -> Vec<&url::Url> {
         match self {
             CompoundActorReference::Reference(reference) => vec![reference.id()],
+
             CompoundActorReference::List(list) => list.iter()
                 .map(|item| item.id())
                 .collect()
+        }
+    }
+
+    /// Returns true if any nested actor reference matches `pattern` string.
+    pub fn matches(&self, pattern: &str) -> bool {
+        match self {
+            CompoundActorReference::Reference(reference) => reference.matches(pattern),
+
+            CompoundActorReference::List(vec) => vec.iter()
+                .any(|reference| reference.matches(pattern))
         }
     }
 }

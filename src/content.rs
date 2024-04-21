@@ -23,15 +23,6 @@ pub struct Content {
     #[serde(rename = "attributedTo")]
     pub attributed_to: CompoundActorReference,
 
-    /// To whom it is sent, in most cases it is
-    /// `https://www.w3.org/ns/activitystreams#Public` - special public URL.
-    /// Some services do not set it and provide public URL in `cc`.
-    pub to: Option<CompoundActorReference>,
-
-    /// Recipients to receive copy of content.
-    #[cfg(feature = "more_properties")]
-    pub cc: Option<CompoundActorReference>,
-
     /// Is not really expected in Content object,
     /// but will be here just in case someone actually uses it.
     /// it is property to specify search indexing consent.

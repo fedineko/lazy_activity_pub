@@ -13,15 +13,35 @@ use crate::context::{Context, ContextItem};
 /// * etc.
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone, Copy)]
 pub enum EntityType {
-    // Activities
+    // Activities.
+    //  see: https://www.w3.org/TR/activitystreams-vocabulary/#activity-types
+    Add,
     Accept,
     Announce,
+    Arrive,
+    Block,
     Create,
     Delete,
+    Dislike,
+    Flag,
     Follow,
+    Ignore,
+    Invite,
+    Join,
+    Leave,
+    Like,
+    Listen,
+    Move,
+    Offer,
+    Read,
     Reject,
+    Remove,
+    TentativeAccept,
+    TentativeReject,
+    Travel,
     Undo,
     Update,
+    View,
 
     // Actors
     Actor,
@@ -115,7 +135,10 @@ pub struct Entity {
 
 impl Entity {
     /// Constructs new entity with specified `entity_type`.
-    /// Is used quite rarely.
+    ///
+    /// Constructed entity has default context referring:
+    ///  - <https://w3id.org/security/v1>
+    ///  - <https://www.w3.org/ns/activitystreams>
     pub fn new(entity_type: EntityType) -> Self {
         Self {
             context: Some(
@@ -124,6 +147,15 @@ impl Entity {
                     ContextItem::Url(Url::parse("https://www.w3.org/ns/activitystreams").unwrap()),
                 ])
             ),
+            object_type: entity_type,
+        }
+    }
+
+    /// Constructs new entity with specified `entity_type` and `context`
+    /// overriding default context.
+    pub fn new_with_context(entity_type: EntityType, context: Context) -> Self {
+        Self {
+            context: Some(context),
             object_type: entity_type,
         }
     }

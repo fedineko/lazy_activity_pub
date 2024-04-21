@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use crate::actor::CompoundActorReference;
 use crate::context::Context;
 use crate::entity::{Entity, EntityType};
 
@@ -68,6 +70,7 @@ pub struct Object {
     pub id: url::Url,
 
     /// Name of object, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 
     /// Example of complex URL field:
@@ -84,6 +87,7 @@ pub struct Object {
     ///       "href": "https://peertube.stream/static/streaming-playlists/hls/yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-master.m3u8",
     ///       "tag": [
     /// ```
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<UrlReference>,
 
     // Example of Peertube preview.
@@ -109,20 +113,66 @@ pub struct Object {
     //     }
     //   ],
 
+    /// To whom it is sent, in most cases it is
+    /// `https://www.w3.org/ns/activitystreams#Public` - special public URL.
+    /// Some services do not set it and provide public URL in `cc`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<CompoundActorReference>,
+
+    /// Recipients to receive copy of content.
+    #[cfg(feature = "more_properties")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cc: Option<CompoundActorReference>,
+
     /// Preview details.
     #[cfg(feature = "more_properties")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     preview: Option<Entity>,
 
     /// Object summary, short description.
     #[cfg(feature = "more_properties")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
 }
 
 impl Object {
+    /// Creates basic object of `entity_type` with given `id`.
+    /// Other properties are not set.
+    pub fn new_with_entity_type(entity_type: EntityType, id: url::Url) -> Self {
+        Self {
+            entity: Entity::new(entity_type),
+            id,
+            name: None,
+            url: None,
+            to: None,
+        }
+    }
+
+    /// Creates basic object with given `entity` and `id`.
+    /// Other properties are not set.
+    pub fn new_with_entity(entity: Entity, id: url::Url) -> Self {
+        Self {
+            entity,
+            id,
+            name: None,
+            url: None,
+            to: None,
+        }
+    }
+
     /// Returns any URL specified in the `url` field of this object.
     pub fn object_url(&self) -> Option<&url::Url> {
         self.url.as_ref()
             .and_then(|x| x.any_url())
+    }
+
+    /// Returns true if object addressee matches `pattern`.
+    pub fn matches(&self, pattern: &str) -> bool {
+        self.to.as_ref()
+            .map(|reference| reference.matches(pattern))
+            .unwrap_or(false)
+
+        // TODO: add cc match
     }
 }
 
