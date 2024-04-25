@@ -1,8 +1,15 @@
 use std::collections::HashMap;
+use log::warn;
 
 use serde::Deserialize;
 
-use crate::actor::{CompoundActorReference, is_public_searchable_by};
+use crate::actor::{
+    CompoundActorReference,
+    FEDINEKO_ADDRESSEE,
+    is_public_searchable_by,
+    PUBLIC_ADDRESSEE
+};
+
 use crate::attachment::AttachmentReference;
 use crate::context::Context;
 use crate::discoverable::{AllowReason, DenyReason, Discoverable};
@@ -41,8 +48,10 @@ pub struct Content {
     /// Flag to indicate that content is sensitive.
     pub sensitive: Option<bool>,
 
-    /// Fedibird's extension applicable to posts as well as to actors, indicates actor's
-    /// consent for indexing servers to index this content.
+    /// Fedibird's extension applicable to posts as well as to actors,
+    /// indicates actor's consent for indexing servers to index ("searchable")
+    /// this content.
+    ///
     /// See: <https://github.com/mastodon/mastodon/pull/23808#issuecomment-1543273137>
     ///
     /// ```json
@@ -70,7 +79,8 @@ pub struct Content {
     /// Full content data.
     pub content: Option<String>,
 
-    /// If localized into multiple languages, those will be part of `content_map`.
+    /// If localized into multiple languages, those will be
+    /// part of `content_map`.
     /// Often - but not always - could be used to guess language of content.
     #[serde(rename = "contentMap")]
     pub content_map: Option<ContentMap>,
@@ -104,7 +114,8 @@ impl ObjectTrait for Content {
 pub enum ContentMap {
     /// A proper dictionary of languages mapped to content.
     Map(HashMap<String, String>),
-    /// Rarely observed `contentMap` variant that is just an JSON array with single item.
+    /// Rarely observed `contentMap` variant that is just an JSON array
+    /// with single item.
     List(Vec<String>),
 }
 
@@ -132,7 +143,10 @@ impl Content {
     /// Content values are cleaned and joined with summary if any.
     /// `cleaner` function is applied to content before wrapping it into
     /// returned value.
-    pub fn get_content_map(&self, cleaner: &dyn Fn(&str) -> String) -> Option<HashMap<String, String>> {
+    pub fn get_content_map(
+        &self,
+        cleaner: &dyn Fn(&str) -> String
+    ) -> Option<HashMap<String, String>> {
         if let Some(content_map) = &self.content_map {
             let summary = self.summary.as_ref();
 
@@ -144,8 +158,12 @@ impl Content {
                             k.to_string(),
                             match summary {
                                 None => cleaner(v),
+
                                 Some(summary) => {
-                                    let joined_value = format!("<p>{summary}</p>\n{v}");
+                                    let joined_value = format!(
+                                        "<p>{summary}</p>\n{v}"
+                                    );
+
                                     cleaner(&joined_value)
                                 }
                             }
@@ -165,7 +183,10 @@ impl Content {
             .or(self.object_entity.name.as_ref());
 
         if content.is_some() && summary.is_some() {
-            let text = format!("<p>{}</p>\n{}", summary.unwrap(), content.unwrap());
+            let text = format!(
+                "<p>{}</p>\n{}",
+                summary.unwrap(), content.unwrap()
+            );
 
             return Some(HashMap::from([
                 (
@@ -180,7 +201,7 @@ impl Content {
                     cleaner(summary.unwrap())
                 )
             ]));
-        } else if let Some(content) = content{
+        } else if let Some(content) = content {
             return Some(HashMap::from([
                 (
                     "default".to_string(),
@@ -192,11 +213,19 @@ impl Content {
         None
     }
 
-    pub fn get_discoverable_state(&self, default_state: Discoverable) -> Discoverable {
+    /// This method returns discoverability state for Content.
+    /// Multiple properties are checked, if nothing matches content is assumed
+    /// to have `default_state` of discoverability.
+    pub fn get_discoverable_state(
+        &self,
+        default_state: Discoverable
+    ) -> Discoverable {
 
-        // `searchableBy` takes priority over other fields (which are usually account level fields)
+        // `searchableBy` takes priority over other fields (which are usually
+        // account level fields)
+        //
         // See more on `searchableBy`:
-        //   <https://github.com/mastodon/mastodon/pull/23808#issuecomment-1543273137>
+        //   https://github.com/mastodon/mastodon/pull/23808#issuecomment-1543273137
         if let Some(searchable_by) = &self.searchable_by {
             if let Some(reason) = is_public_searchable_by(searchable_by) {
                 return reason;
@@ -212,13 +241,52 @@ impl Content {
         }
 
         // if 'discoverable' is set, but 'indexable' is not, then assume
-        // 'discoverable' broadcasts the same intention of allowing/denying indexing
-        // as older instances had 'discoverable' flag only.
+        // 'discoverable' broadcasts the same intention of allowing/denying
+        // indexing as older instances had 'discoverable' flag only.
         if let Some(discoverable) = self.discoverable {
             return match discoverable {
                 true => Discoverable::Allowed(AllowReason::Discoverable),
                 false => Discoverable::Denied(DenyReason::Discoverable),
             };
+        }
+
+        if matches!(default_state, Discoverable::Allowed(_)) {
+            // If default reasoning is on opt-in path this is the last guard:
+            //   if content is not sent to public stream, then assume
+            //   origin Fediverse instance sent non-indexable public object
+            //   to relay.
+            //
+            // Why `to` only?
+            //   `cc` is not checked because e.g. in Mastodon such scenario,
+            //   in which `cc` references public stream yet `to` does not,
+            //   means content is unlisted.
+            //   "Unlisted" means it is public, accessible via direct link
+            //   but is not shown in federated timeline.
+            //
+            //   Effectively it is intent NOT to index as Fedineko index
+            //   is more or less equal to "searchable federated timeline".
+            //
+            //  see also:
+            //     https://seb.jambor.dev/posts/understanding-activitypub/
+            let matches_public_stream = self.object_entity.to
+                .as_ref()
+                .map(|reference|
+                    reference.matches(PUBLIC_ADDRESSEE) ||
+                        reference.matches(FEDINEKO_ADDRESSEE)
+                )
+                // if `to` is absent treat content as non-public.
+                // This is likely sign of malformed activity as `to`
+                // is essential property for addressing.
+                .unwrap_or(false);
+
+            if !matches_public_stream {
+                warn!(
+                    "{}: is not targeted to public stream {PUBLIC_ADDRESSEE}",
+                    self.object_id()
+                );
+
+                return Discoverable::Denied(DenyReason::NonPublicStream);
+            }
         }
 
         // otherwise assume default indexing option
@@ -291,6 +359,49 @@ mod tests {
     }
 
     #[test]
+    fn test_nostr_deserialization_success() {
+        // at least some Nostr relays address public stream as `Public`
+        // instead of full URL.
+        let serialized = r#"
+        {
+          "type": "Note",
+          "id": "https://site.domain/notes/notecanonical_id",
+          "url": [
+            {
+              "type": "Link",
+              "href": "https://site.social/notes/id"
+            },
+            {
+              "type": "Link",
+              "rel": "canonical",
+              "href": "nostr:canonical_id"
+            }
+          ],
+          "attributedTo": "https://site.domain/users/author_id",
+          "to": [
+            "Public"
+          ],
+          "content": "Public, huh?",
+          "published": "2024-04-24T14:41:47Z",
+          "inReplyTo": "https://site.domain/notes/note123",
+          "tag": [
+            {
+              "type": "Mention",
+              "href": "https://site.domain/users/mentee_id",
+              "name": "@mentee@site.domain"
+            }
+          ],
+          "@context": [
+            "https://www.w3.org/ns/activitystreams",
+            "https://w3id.org/security/v1"
+          ]
+        }
+        "#;
+
+        assert!(serde_json::from_str::<Content>(serialized).is_ok());
+    }
+
+    #[test]
     fn test_urls_are_kept_intact_in_content() {
         let serialized = r#"{
           "@context": [],
@@ -311,7 +422,7 @@ mod tests {
         }"#;
 
         let content: Content = serde_json::from_str(serialized).unwrap();
-        let cleaner = |v: &str|  clean_some_content(v, true);
+        let cleaner = |v: &str| clean_some_content(v, true);
         let content_map = content.get_content_map(&cleaner).unwrap();
 
         assert_eq!(

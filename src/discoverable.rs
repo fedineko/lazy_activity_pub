@@ -1,15 +1,19 @@
 /// Reason why content or actor is allowed to index.
 #[derive(Debug)]
 pub enum AllowReason {
-    /// `discoverable` flag is set to `true`
+    /// `discoverable` flag is set to `true`.
     Discoverable,
-    /// `indexable` flag is set to `true`
+    /// `indexable` flag is set to `true`.
     Indexable,
-    /// `fedineko:index` property is set to `allow`
+    /// `fedineko:index` property is set to `allow`.
     FedinekoProperty,
-    /// `searchableBy` scope contains well-known public address
+    /// `searchableBy` scope contains well-known public address.
     /// or Fedineko address.
     SearchableBy(String),
+    /// Addressed to public stream
+    ///   `https://www.w3.org/ns/activitystreams#Public`
+    /// either in `to` or `cc` properties.
+    PublicStream,
     /// If there is no explicit deny to index on actor level,
     /// then assumption is that indexing is allowed.
     Assumed,
@@ -17,14 +21,16 @@ pub enum AllowReason {
 
 #[derive(Debug)]
 pub enum DenyReason {
-    /// `discoverable` flag is set to `false`
+    /// `discoverable` flag is set to `false`.
     Discoverable,
-    /// `indexable` flag is set to `false`
+    /// `indexable` flag is set to `false`.
     Indexable,
-    /// `fedineko:index` property is set to any value other than `allow`
+    /// `fedineko:index` property is set to any value other than `allow`.
     FedinekoProperty,
     /// There is explicit opt-out request.
     OptedOut,
+    /// Addressed to non-public streams only.
+    NonPublicStream,
     /// Account is banned.
     Ban,
     /// When content level permissions are checked,

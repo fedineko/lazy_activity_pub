@@ -11,7 +11,25 @@ use crate::image::ImageReference;
 use crate::object::{Object, ObjectTrait};
 use crate::tag::TagReference;
 
+/// Represents public stream as defined by ActivityStreams spec.
+pub const PUBLIC_ADDRESSEE: &str = "https://www.w3.org/ns/activitystreams#Public";
+
+/// Represents Fedineko indexing stream.
+/// Intention is to provide a mechanism to indicate indexing intent.
+/// Some time later in the distant future.
+pub const FEDINEKO_ADDRESSEE: &str = "https://fedineko.org/indexing#Public";
+
+/// A special stream for actor references Fedineko does not know
+/// how to deal with. This stream MUST not be treated as any proper actor
+/// or, even worse, as public stream. This pseudo stream is needed
+/// as [ActorReference] includes [ActorReference::CatchAll] option now.
+/// Purpose of that option is to capture as string
+/// whatever is not parsable to more expected values.
+const NONE_ADDRESSEE: &str = "https://fedineko.org/#None";
+
 static SECURITY_CONTEXT: OnceLock<url::Url> = OnceLock::new();
+static PUBLIC_STREAM: OnceLock<url::Url> = OnceLock::new();
+static NONE_STREAM: OnceLock<url::Url> = OnceLock::new();
 
 /// Actor object with a few commonly used properties.
 /// See: <https://www.w3.org/TR/activitypub/#actor-objects>
@@ -88,8 +106,8 @@ pub struct Actor {
     pub discoverable: Option<bool>,
 
     /// Fedibird's extension applicable to posts as well as to actors.
-    /// For actors, it - more or less - duplicates fields above but allows scoped
-    /// consent for specific content.
+    /// For actors, it - more or less - duplicates fields above but allows
+    /// scoped consent for specific content.
     /// See: <https://github.com/mastodon/mastodon/pull/23808#issuecomment-1543273137>
     #[serde(rename = "searchableBy")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -125,9 +143,9 @@ impl Actor {
         &self.object_entity.name
     }
 
-    /// This function checks if Actor object has security context and public key
-    /// related property. Returns reference to self, wrapped into [Option].
-    /// It is empty [Option] if validation did fail.
+    /// This method checks if Actor object has security context and
+    /// public key related property. Returns reference to self,
+    /// wrapped into [Option]. It is empty [Option] if validation did fail.
     pub fn validate_security_context(&self) -> Option<&Self> {
         let context = self.context();
 
@@ -146,7 +164,7 @@ impl Actor {
         if self.public_key.is_none() {
             warn!(
                 "Person {} uses context {} but 'publicKeyPem' is not defined",
-                security_context_url.as_str(), self.object_id()
+                self.object_id(), security_context_url
             );
 
             return None;
@@ -160,16 +178,17 @@ impl Actor {
         matches!(self.entity_type(), EntityType::Person)
     }
 
-    /// This function returns discoverability state for Actor.
+    /// This method returns discoverability state for Actor.
     /// Multiple properties are checked, if nothing matches actor is assumed
     /// to be discoverable.
     pub fn get_discoverable_state(&self) -> Discoverable {
-        //  Check for property values of account, this is more of escape hatch for
-        //  services that do not support 'discoverable' and 'indexable' properties,
-        //  yet do want to indicate opt-out or opt-in explicitly.
+        //  Check for property values of account, this is more of escape hatch
+        //  for services that do not support 'discoverable' and 'indexable'
+        //  properties, yet do want to indicate opt-out or opt-in explicitly.
         //
         //  If there is 'fedineko:index' then abid to it.
-        //  Permissive value is 'allow', everything else is treated as indexing is denied.
+        //  Permissive value is 'allow', everything else is treated as indexing
+        //  is denied.
         //
         //  {
         //    "@context": [
@@ -232,8 +251,9 @@ impl Actor {
             // That is weird so let's deny indexing by default.
             None => {
                 warn!(
-                    "{} is not discoverable by default because it lacks required context",
-                    self.object_id_str()
+                    "{} is not discoverable by default \
+                    because it lacks required context",
+                    self.object_id()
                 );
 
                 return Discoverable::Denied(DenyReason::Default);
@@ -251,8 +271,9 @@ impl Actor {
                 }
             } else {
                 warn!(
-                    "{} is not discoverable because 'indexable' is declared but not set",
-                    self.object_id_str()
+                    "{} is not discoverable because \
+                    'indexable' is declared but not set",
+                    self.object_id()
                 );
 
                 Discoverable::Denied(DenyReason::Indexable)
@@ -262,8 +283,8 @@ impl Actor {
         // if 'discoverable' is set, but 'indexable' is not, then assume
         // 'discoverable' indicates the same intention to allow/deny indexing.
         // Some older instances have 'discoverable' flag only.
-        // Historically it was for accounts only and for a slightly different purpose,
-        // but is used for posts as well nowadays.
+        // Historically it was for accounts only and for a slightly different
+        // purpose, but is used for posts as well nowadays.
         if let Some(discoverable) = self.discoverable {
             return match discoverable {
                 true => Discoverable::Allowed(AllowReason::Discoverable),
@@ -272,25 +293,26 @@ impl Actor {
         }
 
         if context.has_definition("discoverable") {
-            // There is no clear spec for the case when it is not set but declared,
-            // see Mastodon documentation:
+            // There is no clear spec for the case when it is not set but
+            // declared, see Mastodon documentation:
             //  - <https://docs.joinmastodon.org/spec/activitypub/#discoverable>
             //  - <https://docs.joinmastodon.org/entities/Account/#discoverable>
             //
             // Assuming the conservative option: no indexing if not set.
             warn!(
-                "{} is not discoverable because 'discoverable' is declared but not set",
-                self.object_id_str()
+                "{} is not discoverable \
+                because 'discoverable' is declared but not set",
+                self.object_id()
             );
 
             return Discoverable::Denied(DenyReason::Discoverable);
         }
 
-        // All deny options are exhausted, so assuming content from actor is indexable.
-        // E.g. lemmy has no similar properties, it is not required by ActivityPub spec.
-        // See: <https://www.w3.org/TR/activitypub/#actor-objects>
-
-        warn!("{} is assumed to be discoverable", self.object_id_str());
+        // All deny options are exhausted, so assuming content from actor
+        // is indexable. E.g. lemmy has no similar properties,
+        // it is not required by ActivityPub spec.
+        //   See: <https://www.w3.org/TR/activitypub/#actor-objects>
+        warn!("{} is assumed to be discoverable", self.object_id());
 
         Discoverable::Allowed(AllowReason::Assumed)
     }
@@ -316,35 +338,61 @@ pub enum ActorReference {
     BasicData(Box<Object>),
     /// The simplest option - just a URL to Actor.
     Url(url::Url),
+    /// Covers the weird option coming from some (all?) Nostr relays.
+    /// NB: it is catch-all entry that treats any string as reference
+    ///     to the special non-existing stream address unless value
+    ///     is "Public". In the latter case it is treated as [PUBLIC_ADDRESSEE]
+    CatchAll(String),
 }
 
 impl Debug for ActorReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ActorReference::Actor(actor) => f.write_fmt(format_args!("{actor:?})")),
-            ActorReference::BasicData(data) => f.write_fmt(format_args!("{data:?})")),
-            ActorReference::Url(url) => f.write_fmt(format_args!("{}", url.as_str()))
+            ActorReference::Actor(actor) => f.write_fmt(
+                format_args!("{actor:?})")
+            ),
+
+            ActorReference::BasicData(data) => f.write_fmt(
+                format_args!("{data:?})")
+            ),
+
+            ActorReference::Url(url) => f.write_str(url.as_str()),
+
+            ActorReference::CatchAll(value) => f.write_fmt(
+                format_args!("CatchAll({value})")
+            ),
         }
     }
 }
 
 impl ActorReference {
-    /// This function returns Actor ID.
+    /// This method returns Actor ID.
     pub fn id(&self) -> &url::Url {
         match self {
             Self::Actor(actor) => actor.object_id(),
             Self::Url(url) => url,
             Self::BasicData(object) => object.object_id(),
+
+            Self::CatchAll(value) => match value.as_str() {
+                "Public" => PUBLIC_STREAM.get_or_init(
+                    || url::Url::parse(PUBLIC_ADDRESSEE).unwrap()
+                ),
+
+                _ => NONE_STREAM.get_or_init(
+                    || url::Url::parse(NONE_ADDRESSEE).unwrap()
+                ),
+            }
         }
     }
 
-    /// This function returns Actor's entity type if possible to get it
+    /// This method returns Actor's entity type if possible to get it
     /// from nested type.
     pub fn entity_type(&self) -> Option<EntityType> {
         match self {
             Self::Actor(actor) => Some(actor.entity_type()),
             Self::Url(_) => None,
             Self::BasicData(object) => Some(object.entity_type()),
+            Self::CatchAll(_) => None,
         }
     }
 
@@ -353,7 +401,12 @@ impl ActorReference {
         match self {
             ActorReference::Actor(actor) => actor.matches(pattern),
             ActorReference::BasicData(object) => object.matches(pattern),
-            ActorReference::Url(url) => url.as_str().contains(pattern)
+            ActorReference::Url(url) => url.as_str().contains(pattern),
+
+            ActorReference::CatchAll(value) => match value.as_str() {
+                "Public" => PUBLIC_ADDRESSEE.contains(pattern),
+                _ => value.contains(pattern) || NONE_ADDRESSEE.contains(pattern)
+            }
         }
     }
 }
@@ -372,21 +425,25 @@ pub enum CompoundActorReference {
 
 impl CompoundActorReference {
     /// Returns ID of actor.
-    /// In case of multiple actors returns ID of first Person-like entity in list or ID
-    /// of first actor in list if there is no any Person-like entity.
+    /// In case of multiple actors returns ID of first Person-like entity
+    /// in list or ID of first actor in list if there is no any
+    /// Person-like entity.
     pub fn id(&self) -> Option<&url::Url> {
         match self {
             Self::Reference(actor_ref) => Some(actor_ref.id()),
+
             Self::List(actor_refs) => {
-                // Some services like Peertube report multiple actors, e.g. Person and Group
-                // As only single attribution entity stored per document in current index schema
-                // there is need to choose which.
+                // Some services like Peertube report multiple actors,
+                // e.g. Person and Group. As only single attribution entity
+                // stored per document in current index schema, there is need
+                // to choose which.
 
                 // First try to find non-group actor
                 let person_like_reference = actor_refs.iter()
                     .find(|x|
                         match x.entity_type() {
                             None => false,
+
                             Some(entity_type) => matches!(
                                 entity_type,
                                 EntityType::Person | EntityType::Service
@@ -406,10 +463,13 @@ impl CompoundActorReference {
         }
     }
 
-    /// Returns single or multiple IDs as vector for a convenience of processing.
+    /// Returns single or multiple IDs as vector for
+    /// a convenience of processing.
     pub fn as_id_vec(&self) -> Vec<&url::Url> {
         match self {
-            CompoundActorReference::Reference(reference) => vec![reference.id()],
+            CompoundActorReference::Reference(reference) => vec![
+                reference.id()
+            ],
 
             CompoundActorReference::List(list) => list.iter()
                 .map(|item| item.id())
@@ -420,7 +480,9 @@ impl CompoundActorReference {
     /// Returns true if any nested actor reference matches `pattern` string.
     pub fn matches(&self, pattern: &str) -> bool {
         match self {
-            CompoundActorReference::Reference(reference) => reference.matches(pattern),
+            CompoundActorReference::Reference(reference) => reference.matches(
+                pattern
+            ),
 
             CompoundActorReference::List(vec) => vec.iter()
                 .any(|reference| reference.matches(pattern))
@@ -445,7 +507,8 @@ pub struct Endpoints {
     #[serde(rename = "oauthTokenEndpoint")]
     oauth_token_endpoint: Option<url::Url>,
 
-    /// Endpoint to authorise client public keys for client-to-server interactions.
+    /// Endpoint to authorise client public keys
+    /// for client-to-server interactions.
     #[cfg(feature = "more_properties")]
     #[serde(rename = "provideClientKey")]
     provide_client_key: Option<url::Url>,
@@ -456,7 +519,8 @@ pub struct Endpoints {
     sign_client_key: Option<url::Url>,
 
     /// Endpoint for delivery of publicly addressed activities.
-    /// Occasionally non-public addressed activities are delivered to it as well.
+    /// Occasionally non-public addressed activities are delivered to it
+    /// as well.
     #[serde(rename = "sharedInbox")]
     pub shared_inbox: Option<url::Url>,
 }
@@ -482,7 +546,8 @@ pub enum PublicKeyReference {
     /// Single key is present.
     Single(PublicKey),
 
-    /// Multiple keys are present or maybe single key object is stored in JSON array.
+    /// Multiple keys are present or maybe single key object is stored
+    /// in JSON array.
     List(Vec<PublicKey>),
 }
 
@@ -491,7 +556,9 @@ impl PublicKeyReference {
     pub fn as_vec(&self) -> Vec<&PublicKey> {
         match self {
             PublicKeyReference::Single(public_key) => vec![public_key],
-            PublicKeyReference::List(public_keys) => public_keys.iter().collect()
+
+            PublicKeyReference::List(public_keys) => public_keys.iter()
+                .collect()
         }
     }
 
@@ -499,6 +566,7 @@ impl PublicKeyReference {
     pub fn get_by_id(&self, key_id: &str) -> Option<&PublicKey> {
         let key_url = match url::Url::parse(key_id) {
             Ok(url) => url,
+
             Err(err) => {
                 error!("Given key ID '{key_id}' is not valid URl: {err:?}");
                 return None;
@@ -506,11 +574,14 @@ impl PublicKeyReference {
         };
 
         match self {
-            PublicKeyReference::Single(public_key) => if public_key.id.eq(&key_url) {
+            PublicKeyReference::Single(public_key) => if public_key.id.eq(
+                &key_url
+            ) {
                 Some(public_key)
             } else {
                 None
             },
+
             PublicKeyReference::List(public_keys) => public_keys.iter()
                 .find(|key| key.id.eq(&key_url))
         }
@@ -520,6 +591,7 @@ impl PublicKeyReference {
     pub fn get_any(&self) -> Option<&PublicKey> {
         match self {
             PublicKeyReference::Single(public_key) => Some(public_key),
+
             PublicKeyReference::List(public_keys) => public_keys.iter()
                 .next()
         }
@@ -528,23 +600,53 @@ impl PublicKeyReference {
 
 /// Helper structure to represent actor as username and server it belongs to.
 pub struct ActorReadableId {
+    /// Server as in Fediverse instance server.
     pub server: String,
+    /// Actor account name as registered on the server.
     pub username: String,
 }
 
 /// This function returns discoverability state for `searchable_by` property.
-/// Content is discoverable if `searchable_by` contains either well-known Public reference
-/// or ot contains Fedineko specific not-really-used-by-anyone reference.
-pub fn is_public_searchable_by(searchable_by: &[url::Url]) -> Option<Discoverable> {
+/// Content is discoverable if `searchable_by` contains either well-known
+/// Public reference or ot contains Fedineko specific not-really-used-by-anyone
+/// reference.
+pub fn is_public_searchable_by(
+    searchable_by: &[url::Url]
+) -> Option<Discoverable> {
     for url in searchable_by.iter() {
         match url.as_str() {
-            "https://www.w3.org/ns/activitystreams#Public" |
-            "https://fedineko.org/indexing#Public" => return Some(
-                Discoverable::Allowed(AllowReason::SearchableBy(url.to_string()))
+            PUBLIC_ADDRESSEE |
+            FEDINEKO_ADDRESSEE => return Some(
+                Discoverable::Allowed(
+                    AllowReason::SearchableBy(url.to_string())
+                )
             ),
+
             _ => {}
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::actor::{ActorReference, NONE_ADDRESSEE, PUBLIC_ADDRESSEE};
+
+    #[test]
+    fn deserialize_nostr_like_public_actor_reference() {
+        let reference: ActorReference = serde_json::from_str(r#""Public""#)
+            .unwrap();
+
+        assert!(matches!(reference, ActorReference::CatchAll(_)));
+        assert_eq!(reference.id().as_str(), PUBLIC_ADDRESSEE);
+        assert_eq!(reference.entity_type(), None);
+
+        let reference: ActorReference = serde_json::from_str(r#""Whatever""#)
+            .unwrap();
+
+        assert!(matches!(reference, ActorReference::CatchAll(_)));
+        assert_eq!(reference.id().as_str(), NONE_ADDRESSEE);
+        assert_eq!(reference.entity_type(), None);
+    }
 }

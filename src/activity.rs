@@ -37,8 +37,9 @@ impl ObjectTrait for Activity {
 }
 
 impl Activity {
-    /// Creates new activity instance of type `activity_type` performed by `actor`
-    /// with `object_reference` payload and `id` to identify activity.
+    /// Creates new activity instance of type `activity_type` performed
+    /// by `actor` with `object_reference` payload and `id` to identify
+    /// activity.
     pub fn new(
         activity_type: EntityType,
         actor: url::Url,
@@ -199,8 +200,13 @@ impl FollowActivity {
     ///
     /// - `follow` given actor or special URL to follow
     /// - `by` actor requesting following.
-    /// - `host` is used to generate activity ID specific to host request is sent to.
-    pub fn new(follow: url::Url, host: &str, by: url::Url) -> Result<Self, url::ParseError> {
+    /// - `host` is used to generate activity ID specific to host request
+    ///         is sent to.
+    pub fn new(
+        follow: url::Url,
+        host: &str,
+        by: url::Url
+    ) -> Result<Self, url::ParseError> {
         let follow_path = format!("{}/follow/{host}/public", by.path());
         let id = by.join(&follow_path)?;
 
@@ -225,6 +231,7 @@ impl FollowActivity {
 #[cfg(test)]
 mod tests {
     use crate::activity::Activity;
+    use crate::actor::PUBLIC_ADDRESSEE;
 
     const SERIALIZED_DATA: &str = r#" {
             "@context": [
@@ -261,11 +268,7 @@ mod tests {
     fn test_addressee_field_matches() {
         let value = serde_json::from_str::<Activity>(SERIALIZED_DATA).unwrap();
 
-        assert!(
-            value.to_field_matches(
-                "https://www.w3.org/ns/activitystreams#Public",
-            )
-        );
+        assert!(value.to_field_matches(PUBLIC_ADDRESSEE));
 
         assert!(
             value.to_field_matches(
